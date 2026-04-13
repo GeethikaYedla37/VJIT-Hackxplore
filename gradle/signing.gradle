@@ -1,0 +1,52 @@
+// Gradle Signing Configuration for Kotlin Artifacts
+
+plugins { 
+    id \"com.github.johnrengelman.shadow\" version \"7.0.0\" // For building a fat jar
+    id \"signing\" // For signing the artifacts
+}
+
+group = \"com.example\"
+version = \"1.0.0\"
+
+// Specify the GPG key and passphrase
+signing { 
+    useGpgCmd() // use GPG command line
+    sign configurations.archives // signing published artifacts
+}
+
+// Define the information for publishing artifacts
+publishing { 
+    publications { 
+        maven(MavenPublication) { 
+            from components.java // Publish the Java component
+            artifactId = \"your-artifact-id\"
+
+            // Sources Jar
+            artifact(tasks.sourcesJar)
+            pom { 
+                name = \"Example\"
+                description = \"An example project\"
+                url = \"https://example.com\"
+                licenses { 
+                    license { 
+                        name = \"Apache 2.0\"
+                        url = \"http://www.apache.org/licenses/LICENSE-2.0.txt\"
+                    }
+                }
+                developers { 
+                    developer { 
+                        id = \"srinath-manda\"
+                        name = \"Srinath Manda\"
+                        email = \"srinath@example.com\"
+                    }
+                }
+            }
+        }
+    }
+
+    // Task to create Sources Jar
+    tasks.register('sourcesJar', Jar) { 
+        from sourceSets.main.allSource
+        classifier \"sources\"
+    }
+}
