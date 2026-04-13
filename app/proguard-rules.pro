@@ -48,6 +48,6 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 
-# Keep ZXing classes for QR code scanning
--keep class com.google.zxing.** { *; }
--keep class com.journeyapps.barcodescanner.** { *; }
+# Keep SLF4J (some libraries like WebRTC or Supabase might reference it)
+-dontwarn org.slf4j.**
+-keep class org.slf4j.** { *; }

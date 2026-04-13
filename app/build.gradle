@@ -15,6 +15,21 @@ android {
         archivesName = "voiddrop"
     }
 
+    def localProperties = new Properties()
+    def localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localProperties.load(new FileInputStream(localPropertiesFile))
+    }
+
+    signingConfigs {
+        release {
+            storeFile file(localProperties['RELEASE_STORE_FILE'] ?: "voiddrop_key.jks")
+            storePassword localProperties['RELEASE_STORE_PASSWORD']
+            keyAlias localProperties['RELEASE_KEY_ALIAS']
+            keyPassword localProperties['RELEASE_KEY_PASSWORD']
+        }
+    }
+
     defaultConfig {
         applicationId "com.voiddrop.app"
         minSdk 24
@@ -28,11 +43,6 @@ android {
             useSupportLibrary true
         }
 
-        def localProperties = new Properties()
-        def localPropertiesFile = rootProject.file("local.properties")
-        if (localPropertiesFile.exists()) {
-            localProperties.load(new FileInputStream(localPropertiesFile))
-        }
         buildConfigField "String", "SUPABASE_URL", "\"${localProperties['SUPABASE_URL'] ?: ""}\""
         buildConfigField "String", "SUPABASE_KEY", "\"${localProperties['SUPABASE_KEY'] ?: ""}\""
     }
@@ -44,6 +54,7 @@ android {
         }
         release {
             minifyEnabled true
+            signingConfig signingConfigs.release
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }

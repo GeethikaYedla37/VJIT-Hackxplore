@@ -29,6 +29,7 @@ gradle-app.setting
 .env
 local.properties
 secrets.xml
+*.jks
 
 # User-specific files
 *.iml
