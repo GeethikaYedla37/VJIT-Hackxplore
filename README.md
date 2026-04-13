@@ -1,6 +1,6 @@
 # VoidDrop 🌌
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9-blue.svg)](https://kotlinlang.org)
 [![WebRTC](https://img.shields.io/badge/WebRTC-P2P-orange.svg)](https://webrtc.org)
 
@@ -87,7 +87,7 @@ Recent updates have significantly improved transfer stability and speed:
 
 ## 📄 License
 
-VoidDrop is available under the **MIT License**. See the [LICENSE](LICENSE) file for more info.
+VoidDrop is available under the **Apache License 2.0**. See the [LICENSE](LICENSE) file for more info.
 
 ---
 
