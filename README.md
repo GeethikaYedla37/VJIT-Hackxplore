@@ -51,7 +51,7 @@ VoidDrop follows **Clean Architecture** principles to ensure maintainability and
 ### Build Instructions
 1. Clone the repository:
    ```bash
-   git clone https://github.com/sickn33/VoidDrop.git
+   git clone https://github.com/srinath-manda/VoidDrop.git
    cd VoidDrop
    ```
 2. Set up `local.properties`:
