@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.VoidDrop" parent="Theme.AppCompat.DayNight">
+        <item name="colorPrimary">@color/voiddrop_primary</item>
+        <item name="colorAccent">@color/voiddrop_secondary</item>
+        <item name="android:statusBarColor">@color/voiddrop_primary</item>
+        <item name="android:navigationBarColor">@color/voiddrop_primary</item>
+    </style>
+</resources>

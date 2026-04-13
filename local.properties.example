@@ -1,0 +1,4 @@
+# Supabase Credentials for P2P Signaling
+# Get these from your Supabase Dashboard -> Project Settings -> API
+SUPABASE_URL=https://your-project-url.supabase.co
+SUPABASE_KEY=your-anon-key

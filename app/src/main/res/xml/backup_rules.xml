@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Exclude sensitive data from backup -->
+    <exclude domain="sharedpref" path="voiddrop_preferences.xml"/>
+    <exclude domain="database" path="voiddrop.db"/>
+    <exclude domain="file" path="voiddrop_files/"/>
+</full-backup-content>

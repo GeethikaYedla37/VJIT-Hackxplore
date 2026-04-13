@@ -1,0 +1,67 @@
+<resources>
+    <string name="app_name">VoidDrop</string>
+    <string name="app_tagline">The Void Never Remembers</string>
+    <string name="app_description">Ephemeral P2P Encrypted File Transfer</string>
+    <string name="app_logo">VoidDrop Logo</string>
+    
+    <!-- Core Actions -->
+    <string name="send_file">SEND</string>
+    <string name="receive_file">RECEIVE</string>
+    <string name="transfer_history">TRANSFER HISTORY</string>
+    
+    <!-- Connection -->
+    <string name="enter_code">Enter receiver code</string>
+    <string name="session_code">Connection Code</string>
+    <string name="ephemeral_connection">EPHEMERAL CONNECTION</string>
+    <string name="connecting">CONNECTING...</string>
+    <string name="connected">CONNECTED</string>
+    <string name="connection_destroyed">CONNECTION DESTROYED</string>
+    
+    <!-- Transfer States -->
+    <string name="transfer_complete">TRANSFER COMPLETE</string>
+    <string name="transfer_failed">TRANSFER FAILED</string>
+    <string name="select_file">SELECT FILE</string>
+    <string name="file_selected">FILE SELECTED</string>
+    <string name="sending">SENDING...</string>
+    <string name="receiving">RECEIVING...</string>
+    <string name="transfer_cancelled">TRANSFER CANCELLED</string>
+    
+    <!-- QR Code -->
+    <string name="scan_qr">SCAN TO CONNECT</string>
+    <string name="generate_qr">GENERATE CODE</string>
+    <string name="show_code_to_sender">Show this code to the sender</string>
+    <string name="point_camera_at_qr">Point camera at receiver\'s QR code</string>
+    <string name="share_code">SHARE CODE</string>
+    <string name="copy_code">COPY CODE</string>
+    
+    <!-- Permissions -->
+    <string name="permission_required">PERMISSION REQUIRED</string>
+    <string name="storage_permission_message">Storage access is required for ephemeral file transfers.</string>
+    <string name="camera_permission_message">Camera access is required to scan connection codes.</string>
+    <string name="grant_permission">GRANT PERMISSION</string>
+    
+    <!-- Actions -->
+    <string name="cancel">CANCEL</string>
+    <string name="retry">RETRY</string>
+    <string name="done">DONE</string>
+    <string name="simulate_connection">SIMULATE CONNECTION</string>
+    
+    <!-- Security Messages -->
+    <string name="ram_only_notice">RAM-ONLY • ZERO PERSISTENCE • FORENSIC DENIABILITY</string>
+    <string name="connection_ephemeral_notice">CONNECTION WILL BE DESTROYED AFTER TRANSFER</string>
+    <string name="void_never_remembers">The void never remembers your transfers</string>
+    
+    <!-- File Transfer -->
+    <string name="file_size_limit">Maximum file size: 100MB</string>
+    <string name="transfer_progress">Transfer Progress</string>
+    <string name="bytes_transferred">%1$s / %2$s transferred</string>
+    <string name="transfer_speed">%1$s/s</string>
+    
+    <!-- Errors -->
+    <string name="file_too_large">File exceeds 100MB limit</string>
+    <string name="connection_timeout">Connection timeout</string>
+    <string name="transfer_interrupted">Transfer interrupted</string>
+    <string name="insufficient_storage">Insufficient storage space</string>
+    <string name="file_not_found">File not found</string>
+    <string name="network_error">Network error</string>
+</resources>

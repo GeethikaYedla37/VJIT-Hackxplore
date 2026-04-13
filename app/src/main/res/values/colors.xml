@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="gray">#FF808080</color>
+    <color name="dark_gray">#FF333333</color>
+    <color name="green">#FF4CAF50</color>
+    <color name="red">#FFF44336</color>
+    <color name="blue">#FF2196F3</color>
+    
+    <!-- VoidDrop brand colors -->
+    <color name="voiddrop_primary">#FF1976D2</color>
+    <color name="voiddrop_secondary">#FF03DAC6</color>
+    <color name="voiddrop_error">#FFB00020</color>
+    <color name="voiddrop_success">#FF4CAF50</color>
+</resources>
