@@ -262,7 +262,7 @@ fun HomeScreenContent(
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Developed by Vasanthadithya & Srinath Manda",
+                text = "Developed by Vasanthadithya & Geethika Yedla",
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Normal

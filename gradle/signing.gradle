@@ -35,9 +35,9 @@ publishing {
                 }
                 developers { 
                     developer { 
-                        id = \"srinath-manda\"
-                        name = \"Srinath Manda\"
-                        email = \"srinath@example.com\"
+                        id = \"geethika-yedla\"
+                        name = \"Geethika Yedla\"
+                        email = \"geethika@example.com\"
                     }
                 }
             }
