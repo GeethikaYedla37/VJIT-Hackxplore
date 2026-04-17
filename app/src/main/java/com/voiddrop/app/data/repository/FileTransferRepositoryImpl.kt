@@ -12,6 +12,7 @@ import com.voiddrop.app.domain.model.TransferStatus
 import com.voiddrop.app.domain.repository.FileTransferRepository
 import com.voiddrop.app.di.IoDispatcher
 import com.voiddrop.app.util.AppLogger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -50,6 +51,9 @@ class FileTransferRepositoryImpl @Inject constructor(
 
     // Sending state
     private val sendingTransfers = ConcurrentHashMap<String, MutableStateFlow<TransferProgress>>()
+    private val transferJobs = ConcurrentHashMap<String, Job>()
+    private val cancelledTransfers = ConcurrentHashMap.newKeySet<String>()
+    private val peerEngines = ConcurrentHashMap<String, WebRTCEngine>()
     
     // Receiving state
     private val receivingFiles = ConcurrentHashMap<String, ReceivingFile>()
@@ -97,18 +101,20 @@ class FileTransferRepositoryImpl @Inject constructor(
         sendingTransfers[transferId] = progressFlow
         updateActiveTransfersList()
 
-        scope.launch(ioDispatcher) {
+        val transferJob = scope.launch(ioDispatcher) {
             try {
                 files.forEach { uri ->
+                    checkTransferNotCancelled(transferId)
                     sendFile(uri, peerId, transferId, progressFlow)
                 }
-
+                checkTransferNotCancelled(transferId)
+            } catch (e: CancellationException) {
+                AppLogger.i(TAG, "Transfer cancelled: $transferId")
                 progressFlow.value = progressFlow.value.copy(
-                    status = TransferStatus.COMPLETED,
-                    fileName = "All files sent"
+                    status = TransferStatus.CANCELLED,
+                    error = "Cancelled by user"
                 )
                 updateActiveTransfersList()
-
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Transfer failed", e)
                 progressFlow.value = progressFlow.value.copy(
@@ -116,16 +122,25 @@ class FileTransferRepositoryImpl @Inject constructor(
                     error = e.message
                 )
                 updateActiveTransfersList()
+            } finally {
+                transferJobs.remove(transferId)
+                cancelledTransfers.remove(transferId)
             }
         }
+        transferJobs[transferId] = transferJob
 
         return progressFlow
     }
 
     private suspend fun sendFile(
-        uri: Uri, peerId: String, transferId: String,
+        uri: Uri,
+        peerId: String,
+        transferId: String,
         progressFlow: MutableStateFlow<TransferProgress>
     ) {
+        checkTransferNotCancelled(transferId)
+        val engine = peerEngines[peerId] ?: webRTCEngine
+
         val fileInfo = fileSystemManager.getFileInfo(uri).getOrThrow()
         AppLogger.d(TAG, "Sending file: ${fileInfo.name} (${fileInfo.size} bytes)")
 
@@ -145,7 +160,10 @@ class FileTransferRepositoryImpl @Inject constructor(
             put("fileSize", fileInfo.size)
             put("mimeType", fileInfo.mimeType)
         }
-        webRTCEngine.sendData(header.toString().toByteArray())
+        val headerSent = engine.sendData(header.toString().toByteArray())
+        if (!headerSent) {
+            throw Exception("Failed to send file header for ${fileInfo.name}")
+        }
         AppLogger.d(TAG, "✅ Sent FILE_HEADER: ${fileInfo.name}")
         delay(100) // Give receiver time to prepare
 
@@ -170,13 +188,14 @@ class FileTransferRepositoryImpl @Inject constructor(
                 // BACKPRESSURE: Wait if the DataChannel buffer is too full.
                 // This prevents chunk loss — the sender won't push more data
                 // than the network can deliver.
-                while (webRTCEngine.getBufferedAmount() > BUFFER_THRESHOLD) {
+                while (engine.getBufferedAmount() > BUFFER_THRESHOLD) {
+                    checkTransferNotCancelled(transferId)
                     delay(BUFFER_CHECK_INTERVAL_MS)
                 }
 
-                val sent = webRTCEngine.sendData(chunkMsg.toString().toByteArray())
+                val sent = engine.sendData(chunkMsg.toString().toByteArray())
                 if (!sent) {
-                    throw Exception("Failed to send chunk $chunkIndex — DataChannel closed")
+                    throw Exception("Failed to send chunk $chunkIndex - DataChannel closed")
                 }
 
                 bytesSent += slice.size
@@ -195,7 +214,10 @@ class FileTransferRepositoryImpl @Inject constructor(
             put("fileName", fileInfo.name)
             put("totalBytes", bytesSent)
         }
-        webRTCEngine.sendData(complete.toString().toByteArray())
+        val completeSent = engine.sendData(complete.toString().toByteArray())
+        if (!completeSent) {
+            throw Exception("Failed to send completion marker for ${fileInfo.name}")
+        }
         AppLogger.d(TAG, "✅ Sent FILE_COMPLETE: ${fileInfo.name} ($bytesSent bytes, $chunkIndex chunks)")
 
         // Finalize
@@ -260,8 +282,11 @@ class FileTransferRepositoryImpl @Inject constructor(
      */
     fun handleFileChunk(json: JSONObject) {
         scope.launch(ioDispatcher) {
+            val transferId = json.optString("transferId", "")
             try {
-                val transferId = json.getString("transferId")
+                if (transferId.isBlank()) {
+                    throw Exception("Missing transferId in FILE_CHUNK")
+                }
                 val base64Data = json.getString("data")
                 val fileData = Base64.decode(base64Data, Base64.NO_WRAP)
 
@@ -275,6 +300,9 @@ class FileTransferRepositoryImpl @Inject constructor(
                 throttleUpdateActiveTransfersList()
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Failed to write file chunk", e)
+                if (transferId.isNotBlank()) {
+                    markReceivingTransferFailed(transferId, e.message ?: "Failed to write received file chunk")
+                }
             }
         }
     }
@@ -284,8 +312,11 @@ class FileTransferRepositoryImpl @Inject constructor(
      */
     fun handleFileComplete(json: JSONObject) {
         scope.launch(ioDispatcher) {
+            val transferId = json.optString("transferId", "")
             try {
-                val transferId = json.getString("transferId")
+                if (transferId.isBlank()) {
+                    throw Exception("Missing transferId in FILE_COMPLETE")
+                }
                 val receiving = receivingFiles.remove(transferId) ?: return@launch
 
                 receiving.outputStream.flush()
@@ -304,6 +335,9 @@ class FileTransferRepositoryImpl @Inject constructor(
                 updateActiveTransfersList()
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Failed to finalize received file", e)
+                if (transferId.isNotBlank()) {
+                    markReceivingTransferFailed(transferId, e.message ?: "Failed to finalize received file")
+                }
             }
         }
     }
@@ -348,11 +382,62 @@ class FileTransferRepositoryImpl @Inject constructor(
     override fun onTransferCompleted(): Flow<TransferProgress> = _transferCompletedEvent.asSharedFlow()
 
     override suspend fun cancelTransfer(transferId: String) {
-        sendingTransfers.remove(transferId)
-        receivingFiles.remove(transferId)?.let {
-            it.outputStream.close()
-            it.targetFile.delete()
+        cancelledTransfers.add(transferId)
+        transferJobs.remove(transferId)?.cancel(CancellationException("Cancelled by user"))
+
+        receivingFiles.remove(transferId)?.let { receiving ->
+            runCatching { receiving.outputStream.close() }
+            runCatching { receiving.targetFile.delete() }
+            receiving.progressFlow.value = receiving.progressFlow.value.copy(
+                status = TransferStatus.CANCELLED,
+                error = "Cancelled by user"
+            )
         }
+
+        val existingFlow = sendingTransfers[transferId] ?: return
+        existingFlow.value = existingFlow.value.copy(
+            status = TransferStatus.CANCELLED,
+            error = "Cancelled by user"
+        )
+
+        updateActiveTransfersList()
+    }
+
+    fun registerPeerEngine(peerId: String, engine: WebRTCEngine) {
+        peerEngines[peerId] = engine
+    }
+
+    fun unregisterPeerEngine(peerId: String) {
+        peerEngines.remove(peerId)
+    }
+
+    private fun checkTransferNotCancelled(transferId: String) {
+        if (cancelledTransfers.contains(transferId)) {
+            throw CancellationException("Transfer $transferId cancelled")
+        }
+    }
+
+    private fun markReceivingTransferFailed(transferId: String, reason: String) {
+        val receiving = receivingFiles.remove(transferId)
+        if (receiving != null) {
+            runCatching { receiving.outputStream.close() }
+            runCatching { if (receiving.targetFile.exists()) receiving.targetFile.delete() }
+
+            val failed = receiving.progressFlow.value.copy(
+                status = TransferStatus.FAILED,
+                error = reason
+            )
+            receiving.progressFlow.value = failed
+            sendingTransfers[transferId] = receiving.progressFlow
+            updateActiveTransfersList()
+            return
+        }
+
+        val existing = sendingTransfers[transferId] ?: return
+        existing.value = existing.value.copy(
+            status = TransferStatus.FAILED,
+            error = reason
+        )
         updateActiveTransfersList()
     }
 }

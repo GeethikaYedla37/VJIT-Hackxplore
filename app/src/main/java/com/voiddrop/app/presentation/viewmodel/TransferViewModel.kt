@@ -39,6 +39,13 @@ class TransferViewModel @Inject constructor(
     private val _transfers = MutableStateFlow<List<TransferProgress>>(emptyList())
     val transfers: StateFlow<List<TransferProgress>> = _transfers.asStateFlow()
 
+    private data class RetrySeed(
+        val uris: List<Uri>,
+        val peerId: String
+    )
+
+    private val retrySeeds = mutableMapOf<String, RetrySeed>()
+
     companion object {
         private const val TAG = "TransferViewModel"
     }
@@ -48,6 +55,10 @@ class TransferViewModel @Inject constructor(
             repository.getActiveTransfers().collect { list ->
                 Log.d(TAG, "Active transfers updated: ${list.size} items")
                 _transfers.value = list
+
+                // Retry is only meaningful for incomplete transfers.
+                list.filter { it.status == com.voiddrop.app.domain.model.TransferStatus.COMPLETED }
+                    .forEach { retrySeeds.remove(it.transferId) }
             }
         }
     }
@@ -60,14 +71,19 @@ class TransferViewModel @Inject constructor(
                 
                 if (targetPeerId == null) {
                     Log.e(TAG, "Cannot send files: No active peer connected")
-                    // In a production app, we would show a Toast or UI error here
+                    Toast.makeText(context, "No active peer connected", Toast.LENGTH_SHORT).show()
                     return@launch
                 }
 
                 Log.d(TAG, "Initiating file transfer to peer: $targetPeerId")
-                repository.sendFiles(uris, targetPeerId)
+                val flow = repository.sendFiles(uris, targetPeerId)
+                val initial = flow.firstOrNull()
+                if (initial != null) {
+                    retrySeeds[initial.transferId] = RetrySeed(uris = uris, peerId = targetPeerId)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to initiate file transfer", e)
+                Toast.makeText(context, "Failed to start transfer: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -76,6 +92,20 @@ class TransferViewModel @Inject constructor(
         viewModelScope.launch {
             repository.cancelTransfer(id)
         }
+    }
+
+    fun retryTransfer(transferId: String) {
+        val seed = retrySeeds[transferId]
+        if (seed == null) {
+            Toast.makeText(context, "Retry data unavailable for this transfer", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        sendFiles(seed.uris, seed.peerId)
+    }
+
+    fun canRetryTransfer(transferId: String): Boolean {
+        return retrySeeds.containsKey(transferId)
     }
 
     fun openFile(fileUri: String) {

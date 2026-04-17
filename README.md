@@ -1,134 +1,202 @@
-# VoidDrop 🌌
+# VoidDrop
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9-blue.svg)](https://kotlinlang.org)
 [![WebRTC](https://img.shields.io/badge/WebRTC-P2P-orange.svg)](https://webrtc.org)
 
-**"The Void Never Remembers"**  
-VoidDrop is a privacy-first, peer-to-peer file transfer app for Android. It is designed so the server helps devices connect, while actual file data moves directly between peers.
+"The Void Never Remembers"
+
+VoidDrop is a privacy-first peer-to-peer Android file transfer app. Supabase is used only as a signaling control plane while payload data moves directly over WebRTC DataChannels.
 
 ---
 
-## ✨ Key Features
+## Key Features
 
-- 📡 **Direct P2P Transfer**: Files move device-to-device over WebRTC DataChannels.
-- 🔢 **Code-Based Pairing**: 6-digit session code with receiver-side accept/reject flow.
-- ⚡ **Stable Large Transfers**: Built-in backpressure handling to reduce drops.
-- 🧩 **Chunked Pipeline**: 32KB transfer chunks tuned for DataChannel reliability.
-- 💨 **Ephemeral Storage Pattern**: Received files are kept in app cache unless explicitly exported.
-- 📁 **Preview + Download**: In-app preview with optional save-to-Downloads.
-- 💬 **Session Chat**: Text chat and file sharing in the same connection session.
-
----
-
-## 🚀 Novelty
-
-VoidDrop's novelty is architectural, not just UI:
-
-- **Trust-Minimized Design**: Signaling server coordinates connections but does not act as cloud file storage.
-- **Control Plane / Data Plane Split**: Supabase handles signaling while WebRTC carries payload data.
-- **Privacy-Aware Lifecycle**: Temporary file handling with explicit user action for permanent export.
-- **Practical Reliability Focus**: Backpressure logic is applied to improve transfer stability on weak networks.
+- Direct peer-to-peer transfer over WebRTC DataChannel.
+- 6-digit pairing flow with receiver consent.
+- Signed mutual-auth pairing handshake before WebRTC signaling is accepted.
+- One-time pairing semantics with short-lived code validity.
+- Replay and stale-message protections on auth messages.
+- Auth-gated OFFER/ANSWER/ICE processing.
+- Backpressure-aware chunked file transfer.
+- In-session chat and file sharing.
+- Ephemeral cache-first file handling with explicit export.
+- Live in-app terminal view for runtime proof of auth, verification, signaling, and transfer events.
 
 ---
 
-## 🌍 Community Value
+## Security Model
 
-- Enables private file exchange without relying on centralized cloud uploads.
-- Reduces backend storage costs for student teams and small organizations.
-- Supports privacy-conscious use cases where data persistence risk should stay low.
-- Demonstrates a reusable pattern for local-first, privacy-by-design mobile apps.
+VoidDrop currently enforces a stronger pairing/authentication flow than earlier MVP versions:
 
----
+1. Device identity keys are generated and stored in Android Keystore.
+2. Sender transmits a signed PAIRING_REQUEST (session code, nonce, timestamp, message id, alias).
+3. Receiver verifies signature and freshness, then returns a signed PAIRING_RESPONSE with nonce echo.
+4. Both sides complete signed AUTH_CHALLENGE/AUTH_RESPONSE with nonce binding.
+5. Timestamp freshness and message-id replay checks are enforced on all auth messages.
+6. WebRTC OFFER/ANSWER/ICE are rejected until peer authentication is complete.
+7. Pairing code is short-lived and consumed after successful first use.
 
-## 🏗️ Architecture
+Verification labels in app:
 
-VoidDrop follows **Clean Architecture** principles for maintainability and testability.
+- VERIFIED: peer completed all checks and is allowed to continue signaling.
+- UNCONFIRMED: checks failed/timed out; signaling from that peer is rejected.
 
-- **Presentation Layer**: Jetpack Compose UI, navigation, permission handling, ViewModels with StateFlow.
-- **Domain Layer**: Models, repository interfaces, and use-case contracts.
-- **Data Layer**:
-  - `WebRTCEngine`: Offer/answer/ICE and DataChannel orchestration.
-  - `SupabaseSignalingManager`: Session channel and signaling message exchange.
-  - `ConnectionRepositoryImpl`: Pairing/session lifecycle and chat message handling.
-  - `FileTransferRepositoryImpl`: Chunking, transfer progress, and backpressure-aware send/receive.
-  - `FileSystemManagerImpl`: Ephemeral cache storage and optional Downloads export.
+Important: Supabase still participates in signaling transport. It does not carry file payload data.
 
-### Technical Stack
+## Data Wipe Policy
 
-- **Language**: Kotlin
-- **UI**: Jetpack Compose + Material 3
-- **Networking**: WebRTC (native Android SDK)
-- **Signaling**: Supabase Realtime (WebSockets)
-- **Dependency Injection**: Hilt / Dagger
-- **Media Preview**: Coil + Android media components
+- Incoming files are kept in app cache by default (ephemeral storage).
+- Cache is wiped on app startup.
+- Cache is also wiped when app task is removed from recents.
+- Export to Downloads is explicit user action.
 
 ---
 
-## 🔐 Security Model (Current MVP)
+## Live Terminal (Judge View)
 
-1. **Signaling Separation**: Supabase is used for signaling and session coordination.
-2. **Encrypted Transport**: WebRTC provides encrypted peer transport.
-3. **Receiver Consent Step**: Incoming pairing request requires explicit accept/reject action.
-4. **Ephemeral-by-Default Handling**: Received files are kept in app cache unless user exports.
+VoidDrop includes a built-in live terminal to make security claims observable during demos.
 
-### Important MVP Note
+- Open the app drawer and select `LIVE TERMINAL (JUDGE VIEW)`.
+- Toggle `AUTH VIEW` to focus on authentication and verification events.
+- Use search to filter by terms like `verified`, `auth`, `nonce`, `offer`, `failed`.
+- Use `COPY` to export visible logs as demo evidence.
 
-- The 6-digit code currently behaves as a **session discovery token**, not full identity authentication.
-- Hardening roadmap includes stronger session authorization and identity verification controls.
-
----
-
-## 🛠️ Performance Notes
-
-- 32KB chunked transfer protocol over DataChannel.
-- Buffered-amount backpressure checks before sending more chunks.
-- Throttled progress updates to avoid UI overload during high-throughput transfer.
+This view is backed by in-app runtime logs and is intended for transparent evaluation.
 
 ---
 
-## 🚀 Getting Started
+## Demo Flow (2 Devices)
+
+Use this sequence for hackathon or judge evaluation:
+
+1. Device A: open `Receive` and generate a 6-digit code.
+2. Device B: open `Send`, enter code and alias, then connect.
+3. Open `LIVE TERMINAL (JUDGE VIEW)` and keep it visible.
+4. Show pairing and auth events moving from unconfirmed to verified.
+5. Send chat and a file to show post-auth P2P transfer behavior.
+6. Optionally toggle `AUTH VIEW` to isolate security-relevant logs.
+
+---
+
+## Novelty and Community Value
+
+### Novelty
+
+- Control-plane/data-plane split: Supabase for signaling only, WebRTC for payloads.
+- Auth-gated signaling: OFFER/ANSWER/ICE are blocked until peer authentication succeeds.
+- Signed handshake with nonce binding, timestamp freshness, and replay protection.
+- Live terminal evidence: judges can verify behavior at runtime, not just from claims.
+
+### Community Value
+
+- Useful for students and campus teams sharing files quickly without cloud payload storage.
+- Reduces dependence on centralized storage for short-lived peer sharing sessions.
+- Supports privacy-aware workflows with explicit export and default ephemeral handling.
+
+---
+
+## Architecture
+
+VoidDrop follows Clean Architecture:
+
+- Presentation: Compose UI, navigation, runtime permissions, ViewModels.
+- Domain: models, repository contracts, use cases.
+- Data:
+  - WebRTCEngine: PeerConnection lifecycle, offer/answer, ICE, DataChannel.
+  - SupabaseSignalingManager: session channel, signal subscription, directed signal filtering.
+  - ConnectionRepositoryImpl: pairing lifecycle, auth handshake, session state, signaling gatekeeping.
+  - FileTransferRepositoryImpl: chunk pipeline, progress, flow control.
+  - FileSystemManagerImpl: temporary storage plus optional export.
+
+Technical stack:
+
+- Kotlin
+- Jetpack Compose + Material 3
+- WebRTC Android SDK
+- Supabase Realtime
+- Hilt/Dagger
+
+---
+
+## Getting Started
 
 ### Prerequisites
 
 - Android Studio Iguana or newer
-- Android SDK 24+ (Android 7.0+)
-- Supabase project credentials for signaling
+- Android SDK 24+
+- Java 17
+- Supabase project credentials (URL + anon key)
 
-### Build Instructions
+### 1) Clone
 
-1. Clone the repository:
+```bash
+git clone https://github.com/srinath-manda/VoidDrop.git
+cd VoidDrop
+```
 
-   ```bash
-   git clone https://github.com/GeethikaYedla37/VJIT-Hackxplore.git
-   cd VJIT-Hackxplore
-   ```
+### 2) Configure local.properties
 
-2. Add credentials to `local.properties`:
+Create local.properties in project root (or update existing):
 
-   ```properties
-   SUPABASE_URL=your_project_url
-   SUPABASE_KEY=your_anon_key
-   ```
+```properties
+sdk.dir=/Users/<you>/Library/Android/sdk
+SUPABASE_URL=https://your-project-url.supabase.co
+SUPABASE_KEY=your-anon-key
+```
 
-3. Build debug APK:
+You can start from local.properties.example.
 
-   ```bash
-   ./gradlew assembleDebug
-   ```
+### 3) Build
+
+```bash
+./gradlew :app:assembleDebug
+```
+
+Output APK:
+
+- app/build/outputs/apk/debug/voiddrop-debug.apk
+
+### 4) Install on device or emulator
+
+```bash
+adb devices
+adb -s <device-id> install -r app/build/outputs/apk/debug/voiddrop-debug.apk
+```
 
 ---
 
-## 🎤 Pitch Summary
+## Emulator Notes
 
-VoidDrop is a privacy-oriented mobile file-sharing system built on open standards. It emphasizes trust minimization, direct peer transfer, and practical deployment for communities that need lower data retention and lower infrastructure burden.
-
----
-
-## 📄 License
-
-VoidDrop is available under the **Apache License 2.0**. See [LICENSE](LICENSE) for details.
+- Emulator-to-emulator WebRTC is supported.
+- ICE handling includes queued remote candidates until remote SDP is set.
+- Emulator environments can use relay-only ICE transport to avoid unroutable host candidates.
 
 ---
 
-*Built for privacy. Built for speed.*
+## Troubleshooting
+
+### Pairing code is not generated
+
+If logs show a Supabase credential error, verify local.properties has non-empty values:
+
+- SUPABASE_URL
+- SUPABASE_KEY
+
+Then rebuild and reinstall.
+
+### App builds but connection never establishes
+
+- Confirm both peers are online and both accepted pairing/auth flow.
+- Check that both peers are running the same latest build.
+- Review logcat for rejected unauthenticated OFFER/ANSWER/ICE events.
+
+### Gradle or KAPT issues on macOS
+
+- Ensure Java 17 is selected for the build.
+
+---
+
+## License
+
+VoidDrop is licensed under Apache 2.0. See [LICENSE](LICENSE).

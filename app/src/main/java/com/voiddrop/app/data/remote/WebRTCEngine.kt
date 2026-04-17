@@ -1,6 +1,8 @@
 package com.voiddrop.app.data.remote
 
 import android.content.Context
+import android.os.Build
+import com.voiddrop.app.BuildConfig
 import com.voiddrop.app.util.AppLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
@@ -27,7 +29,11 @@ class WebRTCEngine @Inject constructor(
     val incomingData: SharedFlow<DataChannel.Buffer> = _incomingData.asSharedFlow()
     
     private var signalingCallback: ((String, String) -> Unit)? = null
-    private var remotePeerId: String? = null
+    private val iceStateLock = Any()
+    private val pendingRemoteIceCandidates = mutableListOf<IceCandidate>()
+
+    @Volatile
+    private var isRemoteDescriptionSet: Boolean = false
     
     companion object {
         // Google's STUN servers (most reliable, free)
@@ -43,8 +49,7 @@ class WebRTCEngine @Inject constructor(
             "stun:stun.relay.metered.ca:80"
         )
         
-        // TURN servers with real credentials from Metered.ca
-        // Free tier: 500MB/month, 10 concurrent connections
+        // TURN server endpoints (credentials are loaded from BuildConfig/local.properties)
         private val TURN_SERVERS = listOf(
             "turn:global.relay.metered.ca:80",
             "turn:global.relay.metered.ca:80?transport=tcp",
@@ -52,9 +57,10 @@ class WebRTCEngine @Inject constructor(
             "turns:global.relay.metered.ca:443?transport=tcp"
         )
         
-        // Real credentials from Metered.ca
-        private const val TURN_USERNAME = "59779175158ebf55c533e0b2"
-        private const val TURN_PASSWORD = "XQhxw1EJiwhVrdRq"
+        // Credentials are injected at build time via local.properties.
+        // Keep source control free of service credentials.
+        private val TURN_USERNAME = BuildConfig.TURN_USERNAME
+        private val TURN_PASSWORD = BuildConfig.TURN_PASSWORD
         
         private const val DATA_CHANNEL_LABEL = "voiddrop_data"
     }
@@ -99,16 +105,19 @@ class WebRTCEngine @Inject constructor(
         return runBlocking {
             try {
                 _connectionState.value = WebRTCConnectionState.Connecting
-                
-                val rtcConfig = PeerConnection.RTCConfiguration(createServerList()).apply {
-                    sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
-                    continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
-                }
-                
-                peerConnection = peerConnectionFactory?.createPeerConnection(
-                    rtcConfig,
+
+                resetIceCandidateState()
+
+                val peer = peerConnectionFactory?.createPeerConnection(
+                    createRtcConfig(),
                     createPeerConnectionObserver()
                 )
+                if (peer == null) {
+                    AppLogger.e(TAG, "PeerConnectionFactory not initialized. Cannot create offer")
+                    _connectionState.value = WebRTCConnectionState.Failed
+                    return@runBlocking null
+                }
+                peerConnection = peer
                 
                 val constraints = MediaConstraints()
 
@@ -159,6 +168,7 @@ class WebRTCEngine @Inject constructor(
                 peerConnection?.setRemoteDescription(object : SdpObserver {
                     override fun onCreateSuccess(p0: SessionDescription?) {}
                     override fun onSetSuccess() {
+                        markRemoteDescriptionSetAndFlush()
                         AppLogger.d(TAG, "Remote answer set successfully")
                     }
                     override fun onCreateFailure(p0: String?) {}
@@ -176,27 +186,25 @@ class WebRTCEngine @Inject constructor(
         return runBlocking {
             try {
                 _connectionState.value = WebRTCConnectionState.Connecting
-                
-                val rtcConfig = PeerConnection.RTCConfiguration(createServerList()).apply {
-                    sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
-                    continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
-                }
-                
-                peerConnection = peerConnectionFactory?.createPeerConnection(
-                    rtcConfig,
+
+                resetIceCandidateState()
+
+                val peer = peerConnectionFactory?.createPeerConnection(
+                    createRtcConfig(),
                     createPeerConnectionObserver()
                 )
-                
-                dataChannel = peerConnection?.createDataChannel(DATA_CHANNEL_LABEL, DataChannel.Init().apply {
-                    ordered = true
-                    maxRetransmits = 30
-                })
-                dataChannel?.registerObserver(createDataChannelObserver())
+                if (peer == null) {
+                    AppLogger.e(TAG, "PeerConnectionFactory not initialized. Cannot handle offer")
+                    _connectionState.value = WebRTCConnectionState.Failed
+                    return@runBlocking null
+                }
+                peerConnection = peer
                 
                 val sessionDesc = SessionDescription(SessionDescription.Type.OFFER, offerSdp)
                 peerConnection?.setRemoteDescription(object : SdpObserver {
                     override fun onCreateSuccess(p0: SessionDescription?) {}
                     override fun onSetSuccess() {
+                        markRemoteDescriptionSetAndFlush()
                         AppLogger.d(TAG, "Remote offer set, creating answer")
                         createAnswer()
                     }
@@ -245,8 +253,27 @@ class WebRTCEngine @Inject constructor(
         scope.launch {
             try {
                 val iceCandidate = IceCandidate(sdpMid, sdpMLineIndex, candidate)
-                peerConnection?.addIceCandidate(iceCandidate)
-                AppLogger.d(TAG, "ICE candidate added")
+
+                val shouldQueue = synchronized(iceStateLock) {
+                    if (!isRemoteDescriptionSet) {
+                        pendingRemoteIceCandidates.add(iceCandidate)
+                        true
+                    } else {
+                        false
+                    }
+                }
+
+                if (shouldQueue) {
+                    AppLogger.d(TAG, "Queued ICE candidate until remote SDP is set")
+                    return@launch
+                }
+
+                val added = peerConnection?.addIceCandidate(iceCandidate) ?: false
+                if (added) {
+                    AppLogger.d(TAG, "ICE candidate added")
+                } else {
+                    AppLogger.w(TAG, "PeerConnection rejected ICE candidate")
+                }
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Failed to add ICE candidate", e)
             }
@@ -255,9 +282,19 @@ class WebRTCEngine @Inject constructor(
     
     fun sendData(data: ByteArray): Boolean {
         return try {
+            val channel = dataChannel
+            if (channel == null) {
+                AppLogger.w(TAG, "DataChannel is null. Cannot send data")
+                return false
+            }
+
+            if (channel.state() != DataChannel.State.OPEN) {
+                AppLogger.w(TAG, "DataChannel is not open (state=${channel.state()})")
+                return false
+            }
+
             val buffer = DataChannel.Buffer(java.nio.ByteBuffer.wrap(data), false)
-            dataChannel?.send(buffer)
-            true
+            channel.send(buffer)
         } catch (e: Exception) {
             AppLogger.e(TAG, "Failed to send data", e)
             false
@@ -288,11 +325,65 @@ class WebRTCEngine @Inject constructor(
                 peerConnection?.close()
                 dataChannel = null
                 peerConnection = null
+                resetIceCandidateState()
                 _connectionState.value = WebRTCConnectionState.Disconnected
                 AppLogger.d(TAG, "Disconnected")
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Error during disconnect", e)
             }
+        }
+    }
+
+    private fun createRtcConfig(): PeerConnection.RTCConfiguration {
+        return PeerConnection.RTCConfiguration(createServerList()).apply {
+            sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
+            continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
+
+            if (isRunningOnEmulator()) {
+                // Emulators often produce non-routable host candidates (e.g., 10.0.2.15).
+                // Relay-only mode avoids broken host/srflx candidate pairs in emulator-to-emulator tests.
+                iceTransportsType = PeerConnection.IceTransportsType.RELAY
+                AppLogger.w(TAG, "Emulator detected, forcing TURN relay ICE transport")
+            }
+        }
+    }
+
+    private fun isRunningOnEmulator(): Boolean {
+        val fingerprint = Build.FINGERPRINT.lowercase()
+        val model = Build.MODEL.lowercase()
+        val product = Build.PRODUCT.lowercase()
+        return fingerprint.contains("generic") ||
+            fingerprint.contains("emulator") ||
+            model.contains("sdk") ||
+            product.contains("sdk") ||
+            product.contains("emulator")
+    }
+
+    private fun resetIceCandidateState() {
+        synchronized(iceStateLock) {
+            isRemoteDescriptionSet = false
+            pendingRemoteIceCandidates.clear()
+        }
+    }
+
+    private fun markRemoteDescriptionSetAndFlush() {
+        var pendingCandidates: List<IceCandidate> = emptyList()
+        synchronized(iceStateLock) {
+            isRemoteDescriptionSet = true
+            if (pendingRemoteIceCandidates.isNotEmpty()) {
+                pendingCandidates = pendingRemoteIceCandidates.toList()
+                pendingRemoteIceCandidates.clear()
+            }
+        }
+
+        if (pendingCandidates.isNotEmpty()) {
+            var addedCount = 0
+            pendingCandidates.forEach { candidate ->
+                if (peerConnection?.addIceCandidate(candidate) == true) {
+                    addedCount++
+                }
+            }
+            AppLogger.d(TAG, "Flushed ${pendingCandidates.size} queued ICE candidates ($addedCount added)")
         }
     }
     
@@ -308,18 +399,22 @@ class WebRTCEngine @Inject constructor(
             }
         }
         
-        // Add TURN servers with real credentials
-        TURN_SERVERS.forEach { server ->
-            try {
-                servers.add(
-                    PeerConnection.IceServer.builder(server)
-                        .setUsername(TURN_USERNAME)
-                        .setPassword(TURN_PASSWORD)
-                        .createIceServer()
-                )
-            } catch (e: Exception) {
-                AppLogger.w(TAG, "Failed to add TURN server: $server - ${e.message}")
+        // Add TURN servers only when credentials are present in local.properties.
+        if (TURN_USERNAME.isNotBlank() && TURN_PASSWORD.isNotBlank()) {
+            TURN_SERVERS.forEach { server ->
+                try {
+                    servers.add(
+                        PeerConnection.IceServer.builder(server)
+                            .setUsername(TURN_USERNAME)
+                            .setPassword(TURN_PASSWORD)
+                            .createIceServer()
+                    )
+                } catch (e: Exception) {
+                    AppLogger.w(TAG, "Failed to add TURN server: $server - ${e.message}")
+                }
             }
+        } else {
+            AppLogger.w(TAG, "TURN credentials missing. Add TURN_USERNAME and TURN_PASSWORD to local.properties")
         }
         
         AppLogger.d(TAG, "Created ICE server list with ${servers.size} servers (STUN: ${STUN_SERVERS.size}, TURN: ${TURN_SERVERS.size})")

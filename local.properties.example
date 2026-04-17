@@ -2,3 +2,10 @@
 # Get these from your Supabase Dashboard -> Project Settings -> API
 SUPABASE_URL=https://your-project-url.supabase.co
 SUPABASE_KEY=your-anon-key
+
+# Optional: TURN credentials (recommended for restrictive NAT/firewall networks)
+# TURN_USERNAME=your-turn-username
+# TURN_PASSWORD=your-turn-password
+
+# Optional: OpenReplay project key (release builds only)
+# OPENREPLAY_PROJECT_KEY=your-openreplay-project-key

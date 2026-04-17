@@ -48,12 +48,6 @@
         </activity>
         
         <service
-            android:name=".data.service.FileTransferService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
-
-        <service
             android:name=".data.service.InstantWipeService"
             android:enabled="true"
             android:exported="false"

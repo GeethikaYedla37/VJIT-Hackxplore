@@ -146,6 +146,8 @@ fun TransferScreen(
                             TransferItem(
                                 transfer = transfer, 
                                 onCancel = { viewModel.cancelTransfer(transfer.transferId) },
+                                onRetry = { viewModel.retryTransfer(transfer.transferId) },
+                                canRetry = viewModel.canRetryTransfer(transfer.transferId),
                                 onPreview = { transfer.fileUri?.let { onNavigateToPreview(it) } },
                                 onDownload = { 
                                     transfer.fileUri?.let { uri -> 
@@ -165,6 +167,8 @@ fun TransferScreen(
 fun TransferItem(
     transfer: com.voiddrop.app.domain.model.TransferProgress, 
     onCancel: () -> Unit,
+    onRetry: () -> Unit,
+    canRetry: Boolean,
     onPreview: () -> Unit,
     onDownload: () -> Unit
 ) {
@@ -194,6 +198,30 @@ fun TransferItem(
                     "Speed: TBD", // Calculate speed if available
                     color = Color.Gray,
                     fontSize = 12.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            val statusColor = when (transfer.status) {
+                com.voiddrop.app.domain.model.TransferStatus.COMPLETED -> Color(0xFF00FF88)
+                com.voiddrop.app.domain.model.TransferStatus.FAILED -> Color.Red
+                com.voiddrop.app.domain.model.TransferStatus.CANCELLED -> Color(0xFFFFB74D)
+                com.voiddrop.app.domain.model.TransferStatus.IN_PROGRESS -> Color.White
+                com.voiddrop.app.domain.model.TransferStatus.PENDING -> Color.Gray
+            }
+            Text(
+                text = "Status: ${transfer.status.name}",
+                color = statusColor,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            if (transfer.status == com.voiddrop.app.domain.model.TransferStatus.FAILED && !transfer.error.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = transfer.error,
+                    color = Color.Red,
+                    fontSize = 11.sp
                 )
             }
 
@@ -230,6 +258,17 @@ fun TransferItem(
                  ) {
                     Text("CANCEL")
                  }
+            } else if (transfer.status == com.voiddrop.app.domain.model.TransferStatus.FAILED || transfer.status == com.voiddrop.app.domain.model.TransferStatus.CANCELLED) {
+                Spacer(modifier = Modifier.height(16.dp))
+                OutlinedButton(
+                    onClick = onRetry,
+                    enabled = canRetry,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White)
+                ) {
+                    Text("RETRY")
+                }
             }
         }
     }

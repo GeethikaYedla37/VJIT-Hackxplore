@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
@@ -23,10 +22,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.ui.window.DialogProperties
-import com.voiddrop.app.util.AppLogger
 
 /**
  * VoidDrop Pairing Screen - Pure Black Background
@@ -38,32 +33,29 @@ fun PairingScreen(
     initialMode: String = "send", // "send" or "receive"
     onNavigateBack: () -> Unit = {},
     onNavigateToChat: (String) -> Unit = {}, // Navigate to Chat with PeerID
+    onNavigateToTerminal: () -> Unit = {},
     viewModel: com.voiddrop.app.presentation.viewmodel.ConnectionViewModel = androidx.hilt.navigation.compose.hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isPairingMode = initialMode == "receive" // Fixed mode based on nav argument
     var inputCode by remember { mutableStateOf("") }
     var inputAlias by remember { mutableStateOf("") }
-    var showLogs by remember { mutableStateOf(false) }
     
     val sessions by viewModel.sessions.collectAsState(initial = emptyList())
-    val appLogs by AppLogger.logs.collectAsState()
-    
-    // Side-effect: Navigate to Chat when connected
-    LaunchedEffect(sessions) {
-        val connectedPeer = sessions.find { it.connectionState == com.voiddrop.app.domain.model.ConnectionState.CONNECTED }
-        if (connectedPeer != null) {
-            onNavigateToChat(connectedPeer.peerId) // Pass ID
-        }
-    }
+    val connectedPeer = sessions
+        .filter { it.connectionState == com.voiddrop.app.domain.model.ConnectionState.CONNECTED }
+        .maxByOrNull { it.lastSeen }
+    val latestSession = sessions
+        .filter { it.peerId != "pending_connection" }
+        .maxByOrNull { it.lastSeen }
     
     // Track connection failures
-    val hasFailedPeer = sessions.any { it.connectionState == com.voiddrop.app.domain.model.ConnectionState.FAILED }
-    val isConnecting = sessions.any { it.connectionState == com.voiddrop.app.domain.model.ConnectionState.CONNECTING }
+    val hasFailedPeer = latestSession?.connectionState == com.voiddrop.app.domain.model.ConnectionState.FAILED
+    val isConnecting = latestSession?.connectionState == com.voiddrop.app.domain.model.ConnectionState.CONNECTING
 
-    // Generate code when entering Receive logic (if none exists)
-    LaunchedEffect(isPairingMode) {
-        if (isPairingMode && uiState.generatedCode == null) {
+    // Generate a fresh code every time Receive mode is opened.
+    LaunchedEffect(initialMode) {
+        if (isPairingMode) {
             viewModel.generatePairingCode()
         }
     }
@@ -189,7 +181,7 @@ fun PairingScreen(
                     modifier = Modifier.padding(start = 16.dp).weight(1f)
                 )
                 
-                IconButton(onClick = { showLogs = true }) {
+                IconButton(onClick = onNavigateToTerminal) {
                     Icon(Icons.Default.Terminal, contentDescription = "View Logs", tint = Color.Gray)
                 }
             }
@@ -242,17 +234,25 @@ fun PairingScreen(
                                 .padding(vertical = 32.dp)
                                 .scale(qrScale)
                         )
+
+                          OutlinedButton(
+                              onClick = { viewModel.generatePairingCode() },
+                              colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                              border = androidx.compose.foundation.BorderStroke(1.dp, Color.White)
+                          ) {
+                              Text("GENERATE NEW CODE", fontWeight = FontWeight.Bold)
+                          }
                         
                         if (hasFailedPeer) {
                             Text(
-                                text = "Connection failed. Try generating a new code.",
+                                  text = "Authentication failed. Peer stayed unconfirmed. Generate a new code.",
                                 color = Color.Red,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.padding(top = 8.dp)
                             )
                         } else if (isConnecting && uiState.pairingRequest == null && sessions.any { it.peerId != "pending_connection" }) {
                             Text(
-                                text = "Peer found! Establishing secure connection...",
+                                  text = "Peer found. Authenticating now (status: unconfirmed)...",
                                 color = Color(0xFF00FF88)
                             )
                         } else {
@@ -261,6 +261,29 @@ fun PairingScreen(
                                 color = Color.Gray
                             )
                         }
+
+                          if (uiState.error != null) {
+                              Text(
+                                  text = uiState.error!!,
+                                  color = Color.Red,
+                                  textAlign = TextAlign.Center,
+                                  modifier = Modifier.padding(top = 12.dp)
+                              )
+                          }
+
+                          if (connectedPeer != null) {
+                              Spacer(modifier = Modifier.height(16.dp))
+                              Button(
+                                  onClick = { onNavigateToChat(connectedPeer.peerId) },
+                                  colors = ButtonDefaults.buttonColors(containerColor = Color.White)
+                              ) {
+                                  Text(
+                                      text = "OPEN CONNECTED SESSION",
+                                      color = Color.Black,
+                                      fontWeight = FontWeight.Bold
+                                  )
+                              }
+                          }
                     }
 
                 } else {
@@ -347,7 +370,7 @@ fun PairingScreen(
                     // Show connection progress feedback
                     if (isConnecting) {
                         Text(
-                            text = "Establishing secure P2P connection...",
+                              text = "Establishing secure P2P connection (status: unconfirmed)...",
                             color = Color(0xFF00FF88),
                             modifier = Modifier.padding(top = 16.dp),
                             textAlign = TextAlign.Center
@@ -355,11 +378,25 @@ fun PairingScreen(
                     }
                     if (hasFailedPeer) {
                         Text(
-                            text = "Connection failed. Check code and try again.",
+                              text = "Authentication failed. This peer is unconfirmed. Check code and retry.",
                             color = Color.Red,
                             modifier = Modifier.padding(top = 8.dp),
                             textAlign = TextAlign.Center
                         )
+                    }
+
+                    if (connectedPeer != null) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = { onNavigateToChat(connectedPeer.peerId) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.White)
+                        ) {
+                            Text(
+                                text = "OPEN CONNECTED SESSION",
+                                color = Color.Black,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -378,41 +415,5 @@ fun PairingScreen(
             modifier = Modifier
                 .alpha(0.6f)
         )
-        
-        // Logs Dialog
-        if (showLogs) {
-             AlertDialog(
-                 onDismissRequest = { showLogs = false },
-                 modifier = Modifier.fillMaxWidth(0.95f).fillMaxHeight(0.8f).border(1.dp, Color.White, MaterialTheme.shapes.large),
-                 containerColor = Color.Black,
-                 properties = DialogProperties(usePlatformDefaultWidth = false),
-                 title = { 
-                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                         Text("Live Connection Logs", color = Color.White, modifier = Modifier.weight(1f))
-                         IconButton(onClick = { AppLogger.clearLogs() }) {
-                             Icon(Icons.Default.Info, contentDescription = "Clear", tint = Color.LightGray)
-                         }
-                         IconButton(onClick = { showLogs = false }) {
-                             Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
-                         }
-                     }
-                 },
-                 text = {
-                     LazyColumn(modifier = Modifier.fillMaxSize().background(Color(0xFF111111))) {
-                         items(appLogs) { log ->
-                             val color = when {
-                                 log.contains(" E/") -> Color.Red
-                                 log.contains(" W/") -> Color.Yellow
-                                 else -> Color.LightGray
-                             }
-                             Spacer(Modifier.height(4.dp))
-                             Text(log, color = color, fontSize = 10.sp, fontFamily = FontFamily.Monospace, lineHeight = 12.sp)
-                             Divider(color = Color.DarkGray, thickness = 0.5.dp)
-                         }
-                     }
-                 },
-                 confirmButton = {}
-             )
-        }
     }
 }

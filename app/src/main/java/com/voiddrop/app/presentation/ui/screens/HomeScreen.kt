@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.GetApp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,9 +39,14 @@ fun HomeScreen(
     onNavigateToReceive: () -> Unit = {},
     onNavigateToChat: (String) -> Unit = {},
     onNavigateToTheVoid: () -> Unit = {},
+    onNavigateToAbout: () -> Unit = {},
+    onNavigateToTerminal: () -> Unit = {},
     viewModel: ConnectionViewModel = hiltViewModel()
 ) {
     val sessions by viewModel.sessions.collectAsState(initial = emptyList())
+    val visibleSessions = sessions
+        .filter { it.peerId != "pending_connection" }
+        .sortedByDescending { it.lastSeen }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     
@@ -73,6 +79,21 @@ fun HomeScreen(
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                 )
 
+                NavigationDrawerItem(
+                    label = { Text("LIVE TERMINAL (JUDGE VIEW)", fontWeight = FontWeight.Bold) },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onNavigateToTerminal()
+                    },
+                    icon = { Icon(Icons.Default.Terminal, contentDescription = null, tint = Color.White) },
+                    colors = NavigationDrawerItemDefaults.colors(
+                        unselectedContainerColor = Color.Transparent,
+                        unselectedTextColor = Color.White
+                    ),
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+
                 Divider(color = Color.Gray)
                 
                 Text(
@@ -83,15 +104,19 @@ fun HomeScreen(
                 )
                 
                 LazyColumn {
-                    items(sessions) { session ->
+                      items(visibleSessions) { session ->
+                          val isVerified = (session.alias ?: "").contains("verified", ignoreCase = true)
+                          val trustLabel = if (isVerified) "VERIFIED" else "UNCONFIRMED"
+                          val trustColor = if (isVerified) Color(0xFF00FF88) else Color(0xFFFFB74D)
+
                         NavigationDrawerItem(
                             label = { 
                                 Column {
                                     Text(session.alias ?: session.deviceName, fontWeight = FontWeight.Bold)
                                     Text(
-                                        session.connectionState.name, 
+                                        "$trustLabel • ${session.connectionState.name}", 
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = if (session.connectionState == ConnectionState.CONNECTED) Color.Green else Color.Gray
+                                        color = trustColor
                                     )
                                 }
                             },
@@ -110,9 +135,9 @@ fun HomeScreen(
                     }
                 }
                 
-                if (sessions.isEmpty()) {
+                  if (visibleSessions.isEmpty()) {
                     Text(
-                        "No active sessions",
+                          "No chat sessions yet",
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp),
@@ -126,6 +151,7 @@ fun HomeScreen(
         HomeScreenContent(
             onNavigateToSend = onNavigateToSend,
             onNavigateToReceive = onNavigateToReceive,
+              onNavigateToAbout = onNavigateToAbout,
             onOpenDrawer = { scope.launch { drawerState.open() } }
         )
     }
@@ -135,6 +161,7 @@ fun HomeScreen(
 fun HomeScreenContent(
     onNavigateToSend: () -> Unit,
     onNavigateToReceive: () -> Unit,
+    onNavigateToAbout: () -> Unit,
     onOpenDrawer: () -> Unit
 ) {
     // Pulsing animation for the logo
@@ -177,6 +204,7 @@ fun HomeScreenContent(
                 contentDescription = "VoidDrop Logo",
                 modifier = Modifier
                     .size(100.dp)
+                      .clickable { onNavigateToAbout() }
                     .scale(logoScale)
                     .padding(bottom = 24.dp)
             )
@@ -269,6 +297,13 @@ fun HomeScreenContent(
                 ),
                 color = Color.Gray
             )
+              Spacer(modifier = Modifier.height(4.dp))
+              Text(
+                  text = "Tap logo for About",
+                  style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                  color = Color.Gray,
+                  modifier = Modifier.alpha(0.8f)
+              )
         }
     }
 }

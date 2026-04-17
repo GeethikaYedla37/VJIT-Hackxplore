@@ -32,7 +32,20 @@ class ConnectionViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             repository.getConnectionStatus().collect { status ->
-                _uiState.update { it.copy(connectionState = status) }
+                _uiState.update { current ->
+                    val inferredError = when (status) {
+                        ConnectionState.FAILED -> current.error
+                            ?: "Authentication failed. Peer stayed unconfirmed. Generate a new code and try again."
+                        ConnectionState.CONNECTED -> null
+                        else -> current.error
+                    }
+
+                    current.copy(
+                        connectionState = status,
+                        error = inferredError,
+                        isLoading = if (status == ConnectionState.CONNECTING) current.isLoading else false
+                    )
+                }
             }
         }
         
@@ -45,7 +58,7 @@ class ConnectionViewModel @Inject constructor(
 
     fun generatePairingCode() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            _uiState.update { it.copy(isLoading = true, error = null, generatedCode = null) }
             repository.generatePairingCode()
                 .onSuccess { code ->
                     _uiState.update { it.copy(generatedCode = code.id, isLoading = false) }
@@ -71,7 +84,7 @@ class ConnectionViewModel @Inject constructor(
         
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             com.voiddrop.app.util.AppLogger.d("ConnectionVM", "connectToPeer called with code=$code, alias=$alias")
-            _uiState.update { it.copy(isLoading = true) }
+              _uiState.update { it.copy(isLoading = true, error = null) }
             repository.validateQRCode(code)
                 .onSuccess { pairingCode ->
                     com.voiddrop.app.util.AppLogger.d("ConnectionVM", "Code validated, proceeding to connectToPeer")
@@ -95,8 +108,19 @@ class ConnectionViewModel @Inject constructor(
     fun acceptPairing() {
         uiState.value.pairingRequest?.let { req ->
             viewModelScope.launch {
-                repository.acceptPairingRequest(req.peerId)
-                _uiState.update { it.copy(pairingRequest = null) }
+                  _uiState.update { it.copy(error = null) }
+                  repository.acceptPairingRequest(req.peerId)
+                      .onSuccess {
+                          _uiState.update { it.copy(pairingRequest = null) }
+                      }
+                      .onFailure { e ->
+                          _uiState.update {
+                              it.copy(
+                                  pairingRequest = null,
+                                  error = e.message ?: "Failed to accept pairing request"
+                              )
+                          }
+                      }
             }
         }
     }

@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.lifecycleScope
+import com.voiddrop.app.BuildConfig
 import com.voiddrop.app.presentation.navigation.VoidDropNavigation
 import com.voiddrop.app.presentation.permissions.PermissionState
 import com.voiddrop.app.presentation.permissions.VoidDropPermissions
@@ -44,17 +45,19 @@ class MainActivity : ComponentActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // Initialize OpenReplay
-        OpenReplay.serverURL = "https://app.openreplay.com/ingest"
-        OpenReplay.start(
-            applicationContext,
-            "2OlOtZ2Om8bIUOSAFAod",
-            OROptions.defaults,
-            onStarted = {
-                println("OpenReplay Started")
-            }
-        )
+
+        if (!BuildConfig.DEBUG && BuildConfig.OPENREPLAY_PROJECT_KEY.isNotBlank()) {
+            // Keep analytics off in debug to avoid noisy retry loops during local testing.
+            OpenReplay.serverURL = "https://app.openreplay.com/ingest"
+            OpenReplay.start(
+                applicationContext,
+                BuildConfig.OPENREPLAY_PROJECT_KEY,
+                OROptions.defaults,
+                onStarted = {
+                    println("OpenReplay Started")
+                }
+            )
+        }
         
         setContent {
             // Force dark theme for pure black background

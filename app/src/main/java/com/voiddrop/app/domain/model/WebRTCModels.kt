@@ -14,6 +14,7 @@ data class SignalingMessage(
     val payload: String,
     val fromPeer: String = "",
     val toPeer: String = "",
+    val sessionId: String = "",
     val timestamp: Long = System.currentTimeMillis()
 ) : Parcelable
 
@@ -26,7 +27,9 @@ enum class SignalingType {
     ANSWER,
     ICE_CANDIDATE,
     PAIRING_REQUEST,
-    PAIRING_RESPONSE
+    PAIRING_RESPONSE,
+    AUTH_CHALLENGE,
+    AUTH_RESPONSE
 }
 
 /**

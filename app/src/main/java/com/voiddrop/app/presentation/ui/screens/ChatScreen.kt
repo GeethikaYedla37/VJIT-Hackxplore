@@ -118,7 +118,9 @@ fun ChatScreen(
         
         // Active Transfers Indicator
         if (transfers.isNotEmpty()) {
-             val activeTransfers = transfers.filter { it.status == TransferStatus.IN_PROGRESS }
+             val activeTransfers = transfers.filter {
+                 it.status == TransferStatus.IN_PROGRESS && it.peerId == peerId
+             }
              if (activeTransfers.isNotEmpty()) {
                  Surface(
                      color = Color.DarkGray,

@@ -6,9 +6,11 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.voiddrop.app.presentation.ui.screens.AboutScreen
 import com.voiddrop.app.presentation.ui.screens.ChatScreen
 import com.voiddrop.app.presentation.ui.screens.FileListScreen
 import com.voiddrop.app.presentation.ui.screens.HomeScreen
+import com.voiddrop.app.presentation.ui.screens.LogsTerminalScreen
 import com.voiddrop.app.presentation.ui.screens.PairingScreen
 
 /**
@@ -20,6 +22,8 @@ sealed class VoidDropRoute(val route: String) {
     object Chat : VoidDropRoute("chat/{peerId}") {
         fun createRoute(peerId: String) = "chat/$peerId"
     }
+    object About : VoidDropRoute("about")
+    object Terminal : VoidDropRoute("terminal")
     object FileList : VoidDropRoute("file_list")
     object Preview : VoidDropRoute("preview/{uri}") {
         fun createRoute(uri: String) = "preview/${Uri.encode(uri)}"
@@ -50,6 +54,28 @@ fun VoidDropNavigation(
                 },
                 onNavigateToTheVoid = {
                     navController.navigate(VoidDropRoute.FileList.route)
+                },
+                onNavigateToAbout = {
+                    navController.navigate(VoidDropRoute.About.route)
+                },
+                onNavigateToTerminal = {
+                    navController.navigate(VoidDropRoute.Terminal.route)
+                }
+            )
+        }
+
+        composable(VoidDropRoute.About.route) {
+            AboutScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(VoidDropRoute.Terminal.route) {
+            LogsTerminalScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
                 }
             )
         }
@@ -65,6 +91,9 @@ fun VoidDropNavigation(
                     navController.navigate(VoidDropRoute.Chat.createRoute(peerId)) {
                         popUpTo(VoidDropRoute.Home.route)
                     }
+                },
+                onNavigateToTerminal = {
+                    navController.navigate(VoidDropRoute.Terminal.route)
                 }
             )
         }

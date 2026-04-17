@@ -45,6 +45,9 @@ android {
 
         buildConfigField "String", "SUPABASE_URL", "\"${localProperties['SUPABASE_URL'] ?: ""}\""
         buildConfigField "String", "SUPABASE_KEY", "\"${localProperties['SUPABASE_KEY'] ?: ""}\""
+        buildConfigField "String", "TURN_USERNAME", "\"${localProperties['TURN_USERNAME'] ?: ""}\""
+        buildConfigField "String", "TURN_PASSWORD", "\"${localProperties['TURN_PASSWORD'] ?: ""}\""
+        buildConfigField "String", "OPENREPLAY_PROJECT_KEY", "\"${localProperties['OPENREPLAY_PROJECT_KEY'] ?: ""}\""
     }
 
     buildTypes {
